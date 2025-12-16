@@ -23,28 +23,32 @@ export interface LoginResponse {
 
 export interface ChatRequest {
   message: string;
-}
-
-export interface ChatResponse {
-  response: string;
-  thread_id: string;
+  thread_id?: string;
 }
 
 export class ApiService {
   private token: string | null = null;
+  private refreshToken: string | null = null;
 
   constructor() {
     this.token = localStorage.getItem('auth_token');
+    this.refreshToken = localStorage.getItem('refresh_token');
   }
 
-  setToken(token: string) {
+  setToken(token: string, refreshToken?: string) {
     this.token = token;
     localStorage.setItem('auth_token', token);
+    if (refreshToken) {
+      this.refreshToken = refreshToken;
+      localStorage.setItem('refresh_token', refreshToken);
+    }
   }
 
   clearToken() {
     this.token = null;
+    this.refreshToken = null;
     localStorage.removeItem('auth_token');
+    localStorage.removeItem('refresh_token');
   }
 
   getAuthHeaders(): HeadersInit {
@@ -59,11 +63,45 @@ export class ApiService {
     return headers;
   }
 
-  private async ensureOk(response: Response) {
+  private async refreshAccessToken(): Promise<boolean> {
+    if (!this.refreshToken) return false;
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/refresh`, {
+        method: 'POST',
+        headers: {
+          'Refresh-Token': this.refreshToken,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        this.setToken(data.access_token, data.refresh_token);
+        return true;
+      }
+    } catch (error) {
+      console.error('Token refresh failed:', error);
+    }
+    
+    return false;
+  }
+
+  private async ensureOk(response: Response, retryOnAuth = true) {
     if (response.ok) return response;
+    
+    // Try to refresh token on 401
+    if (response.status === 401 && retryOnAuth && this.refreshToken) {
+      const refreshed = await this.refreshAccessToken();
+      if (refreshed) {
+        // Token refreshed, caller should retry the request
+        throw new Error('TOKEN_REFRESHED');
+      }
+    }
+    
     const body = await response.text().catch(() => '');
     const err = new Error(`HTTP ${response.status}: ${body || response.statusText}`);
-    // Auto-logout on 401
+    
+    // Clear tokens only if refresh also failed
     if (response.status === 401) {
       this.clearToken();
     }
@@ -84,7 +122,7 @@ export class ApiService {
     }
 
     const data = await response.json();
-    this.setToken(data.access_token);
+    this.setToken(data.access_token, data.refresh_token);
     return data;
   }
 
@@ -102,26 +140,21 @@ export class ApiService {
     }
   }
 
-  async sendMessage(message: string): Promise<ChatResponse> {
-    const response = await fetch(`${API_BASE_URL}/chat`, {
-      method: 'POST',
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify({ message }),
-    });
-    await this.ensureOk(response);
-    return response.json();
-  }
-
-  async *streamMessage(message: string): AsyncGenerator<string, void, unknown> {
+  async *streamMessage(message: string, threadId?: string): AsyncGenerator<{ content: string; threadId?: string }, void, unknown> {
     const headers: HeadersInit = {
       ...this.getAuthHeaders(),
       'Accept': 'text/event-stream',
     };
 
+    const body: ChatRequest = { message };
+    if (threadId) {
+      body.thread_id = threadId;
+    }
+
     const response = await fetch(`${API_BASE_URL}/chat/stream`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ message }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -161,14 +194,17 @@ export class ApiService {
           try {
             const parsed = JSON.parse(trimmed);
             if (parsed.type === 'token') {
-              yield parsed.content;
+              yield { content: parsed.content };
             } else if (parsed.type === 'status') {
-              yield `\n\n_${parsed.content}_\n\n`;
+              // Show status with proper spacing
+              yield { content: `\n\n*${parsed.content}*\n\n` };
+            } else if (parsed.type === 'done' && parsed.thread_id) {
+              yield { content: '', threadId: parsed.thread_id };
             } else if (parsed.type === 'error') {
               throw new Error(parsed.content);
             }
           } catch (e) {
-            console.warn('Failed to parse SSE data:', trimmed);
+            // Silently ignore parse errors in production
           }
         }
       }
@@ -177,8 +213,12 @@ export class ApiService {
     }
   }
 
-  async getChatHistory(): Promise<Message[]> {
-    const response = await fetch(`${API_BASE_URL}/chat/history`, {
+  async getChatHistory(threadId?: string): Promise<Message[]> {
+    const url = threadId 
+      ? `${API_BASE_URL}/chat/history?thread_id=${encodeURIComponent(threadId)}`
+      : `${API_BASE_URL}/chat/history`;
+    
+    const response = await fetch(url, {
       method: 'GET',
       headers: this.getAuthHeaders(),
     });
@@ -188,12 +228,25 @@ export class ApiService {
     return data.messages || [];
   }
 
-  async clearChatHistory(): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/chat/history`, {
+  async clearChatHistory(threadId?: string): Promise<void> {
+    const url = threadId 
+      ? `${API_BASE_URL}/chat/history?thread_id=${encodeURIComponent(threadId)}`
+      : `${API_BASE_URL}/chat/history`;
+    
+    const response = await fetch(url, {
       method: 'DELETE',
       headers: this.getAuthHeaders(),
     });
     await this.ensureOk(response);
+  }
+
+  async getSessions(): Promise<{ sessions: Array<{ id: string; title: string; preview: string; timestamp: string; message_count: number }> }> {
+    const response = await fetch(`${API_BASE_URL}/chat/sessions`, {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    });
+    await this.ensureOk(response);
+    return await response.json();
   }
 }
 

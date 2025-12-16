@@ -1,14 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Message } from './Message';
 import { ChatInput } from './ChatInput';
-import { Wrench, Trash2, LogOut, Menu, X, MessageSquare, Plus } from 'lucide-react';
+import { Wrench, Trash2, LogOut, Menu, X, Plus } from 'lucide-react';
 import { apiService, type Message as MessageType } from '../services/api';
 
 interface ChatSession {
   id: string;
   title: string;
-  lastMessage: string;
+  preview: string;
   timestamp: string;
+  message_count: number;
 }
 
 interface ChatProps {
@@ -21,6 +22,7 @@ export const Chat: React.FC<ChatProps> = ({ onLogout }) => {
   const [streamingMessage, setStreamingMessage] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -32,37 +34,16 @@ export const Chat: React.FC<ChatProps> = ({ onLogout }) => {
   }, [messages, streamingMessage]);
 
   useEffect(() => {
-    // Load chat history on mount
-    loadHistory();
+    // Load sessions on mount
+    loadSessions();
   }, []);
 
-  useEffect(() => {
-    // Update sessions when messages change
-    if (messages.length > 0) {
-      const firstUserMessage = messages.find(m => m.role === 'user');
-      const lastMessage = messages[messages.length - 1];
-      
-      if (firstUserMessage) {
-        const title = firstUserMessage.content.slice(0, 30) + (firstUserMessage.content.length > 30 ? '...' : '');
-        const session: ChatSession = {
-          id: 'current',
-          title,
-          lastMessage: lastMessage.content.slice(0, 50) + (lastMessage.content.length > 50 ? '...' : ''),
-          timestamp: new Date().toISOString(),
-        };
-        
-        // Only show current session for now
-        setSessions([session]);
-      }
-    }
-  }, [messages]);
-
-  const loadHistory = async () => {
+  const loadSessions = async () => {
     try {
-      const history = await apiService.getChatHistory();
-      setMessages(history);
+      const response = await apiService.getSessions();
+      setSessions(response.sessions || []);
     } catch (error) {
-      console.error('Failed to load history:', error);
+      console.error('Failed to load sessions:', error);
     }
   };
 
@@ -79,17 +60,15 @@ export const Chat: React.FC<ChatProps> = ({ onLogout }) => {
     try {
       // Stream the response
       let fullResponse = '';
+      let receivedThreadId: string | undefined;
 
-      try {
-        for await (const chunk of apiService.streamMessage(content)) {
-          fullResponse += chunk;
+      for await (const chunk of apiService.streamMessage(content, currentThreadId || undefined)) {
+        if (chunk.threadId) {
+          receivedThreadId = chunk.threadId;
+        } else if (chunk.content) {
+          fullResponse += chunk.content;
           setStreamingMessage(fullResponse);
         }
-      } catch (streamErr) {
-        // Fallback to non-streaming endpoint
-        const resp = await apiService.sendMessage(content);
-        fullResponse = resp.response;
-        setStreamingMessage(fullResponse);
       }
 
       // Add complete assistant message
@@ -99,6 +78,37 @@ export const Chat: React.FC<ChatProps> = ({ onLogout }) => {
       };
       setMessages((prev) => [...prev, assistantMessage]);
       setStreamingMessage('');
+
+      // Set thread_id if this was a new chat
+      if (receivedThreadId && !currentThreadId) {
+        setCurrentThreadId(receivedThreadId);
+      }
+      
+      const effectiveThreadId = receivedThreadId || currentThreadId;
+
+      // Update sessions immediately - add current conversation to top
+      const firstUserMsg = userMessage.content;
+      const title = firstUserMsg.slice(0, 50) + (firstUserMsg.length > 50 ? '...' : '');
+      const preview = fullResponse.slice(0, 60) + (fullResponse.length > 60 ? '...' : '');
+      
+      if (effectiveThreadId) {
+        const newSession: ChatSession = {
+          id: effectiveThreadId,
+          title,
+          preview,
+          timestamp: new Date().toISOString(),
+          message_count: messages.length + 2, // +2 for user message and assistant response
+        };
+
+        // Add to top of sessions list, remove if already exists
+        setSessions((prev) => {
+          const filtered = prev.filter(s => s.id !== newSession.id);
+          return [newSession, ...filtered];
+        });
+      }
+
+      // Reload full sessions from backend to sync
+      await loadSessions();
     } catch (error: any) {
       console.error('Failed to send message:', error);
       const msg = String(error?.message || 'Unknown error');
@@ -123,10 +133,12 @@ export const Chat: React.FC<ChatProps> = ({ onLogout }) => {
   };
 
   const handleClearHistory = async () => {
-    if (confirm('Are you sure you want to clear the chat history?')) {
+    if (confirm('Are you sure you want to clear all conversations?')) {
       try {
         await apiService.clearChatHistory();
         setMessages([]);
+        setSessions([]);
+        setCurrentThreadId(null);
       } catch (error) {
         console.error('Failed to clear history:', error);
       }
@@ -136,19 +148,33 @@ export const Chat: React.FC<ChatProps> = ({ onLogout }) => {
   const handleNewChat = () => {
     setMessages([]);
     setStreamingMessage('');
+    setCurrentThreadId(null);
   };
 
-  const hasStartedChat = messages.length > 0 || streamingMessage !== '';
+  const handleSessionClick = async (sessionId: string) => {
+    if (sessionId === currentThreadId) return; // Already viewing this session
+    
+    try {
+      setIsLoading(true);
+      const history = await apiService.getChatHistory(sessionId);
+      setMessages(history);
+      setCurrentThreadId(sessionId);
+      setStreamingMessage('');
+    } catch (error) {
+      console.error('Failed to load session:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="flex h-screen bg-chat-bg">
-      {/* Sidebar - Only show if chat has started */}
-      {hasStartedChat && (
-        <div
-          className={`bg-chat-sidebar border-r border-chat-border transition-all duration-300 flex flex-col ${
-            sidebarOpen ? 'w-64' : 'w-0'
-          } overflow-hidden`}
-        >
+      {/* Sidebar - Always visible */}
+      <div
+        className={`bg-chat-sidebar border-r border-chat-border transition-all duration-300 flex flex-col ${
+          sidebarOpen ? 'w-64' : 'w-0'
+        } overflow-hidden`}
+      >
           {/* Sidebar Header */}
           <div className="p-3 border-b border-chat-border">
             <button
@@ -162,22 +188,30 @@ export const Chat: React.FC<ChatProps> = ({ onLogout }) => {
 
           {/* Chat History */}
           <div className="flex-1 overflow-y-auto px-2 py-2">
-            <div className="text-xs font-semibold text-chat-text-secondary px-3 py-2">
-              Your chats
-            </div>
-            {sessions.map((session) => (
-              <button
-                key={session.id}
-                className="w-full text-left px-3 py-3 hover:bg-chat-hover rounded-lg transition-colors group mb-1"
-              >
-                <div className="text-sm text-chat-text truncate font-medium mb-1">
-                  {session.title}
+            {sessions.length > 0 && (
+              <>
+                <div className="text-xs font-semibold text-chat-text-secondary px-3 py-2">
+                  Your chats
                 </div>
-                <div className="text-xs text-chat-text-secondary truncate">
-                  {session.lastMessage}
-                </div>
-              </button>
-            ))}
+                {sessions.map((session) => (
+                  <button
+                    key={session.id}
+                    onClick={() => handleSessionClick(session.id)}
+                    disabled={isLoading}
+                    className={`w-full text-left px-3 py-3 hover:bg-chat-hover rounded-lg transition-colors group mb-1 ${
+                      currentThreadId === session.id ? 'bg-chat-hover' : ''
+                    } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <div className="text-sm text-chat-text truncate font-medium mb-1">
+                      {session.title}
+                    </div>
+                    <div className="text-xs text-chat-text-secondary truncate">
+                      {session.preview}
+                    </div>
+                  </button>
+                ))}
+              </>
+            )}
           </div>
 
           {/* Sidebar Footer */}
@@ -198,13 +232,11 @@ export const Chat: React.FC<ChatProps> = ({ onLogout }) => {
             </button>
           </div>
         </div>
-      )}
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
-        {/* Header */}
-        {hasStartedChat && (
-          <div className="border-b border-chat-border bg-chat-bg px-4 py-3 flex items-center justify-between">
+        {/* Header - Always visible */}
+        <div className="border-b border-chat-border bg-chat-bg px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -222,7 +254,6 @@ export const Chat: React.FC<ChatProps> = ({ onLogout }) => {
               <h1 className="text-lg font-semibold text-white">Repair Assistant</h1>
             </div>
           </div>
-        )}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto scrollbar-thin">

@@ -59,6 +59,31 @@ def login(user: UserLogin):
 def me(user=Depends(verify_token)):
     return user
 
+@router.post("/refresh")
+def refresh_token(refresh_token: str = Header(..., alias="Refresh-Token")):
+    """
+    Refresh an expired access token using a refresh token.
+    This allows sessions to last much longer without re-login.
+    """
+    try:
+        response = supabase.auth.refresh_session(refresh_token)
+        
+        if response.session:
+            return {
+                "access_token": response.session.access_token,
+                "refresh_token": response.session.refresh_token,
+                "user": {
+                    "id": response.user.id,
+                    "email": response.user.email
+                },
+                "message": "Token refreshed successfully"
+            }
+        else:
+            raise HTTPException(status_code=401, detail="Token refresh failed")
+            
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token refresh failed: {str(e)}")
+
 @router.post("/logout")
 def logout(user=Depends(verify_token)):
     supabase.auth.sign_out(user['access_token'])

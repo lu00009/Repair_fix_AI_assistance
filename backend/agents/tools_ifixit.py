@@ -7,19 +7,29 @@ IFIXIT_BASE = "https://www.ifixit.com/api/2.0"
 @tool
 def find_device(query: str) -> str:
     """
-    Find device name from user text using iFixit API.
-    Endpoint: GET https://www.ifixit.com/api/2.0/search/{QUERY}?filter=device
-    Converts user text like 'my ps5 broke' into database key like 'PlayStation 5'.
+    Find device name or guides from user text using iFixit API.
+    Searches without filter if query looks like a how-to question.
+    Endpoint: GET https://www.ifixit.com/api/2.0/search/{QUERY}
+    Converts user text like 'my ps5 broke' into database key or returns relevant guides.
     """
     try:
-        url = f"{IFIXIT_BASE}/search/{query}?filter=device"
+        # Check if query is a how-to/guide question (not device-specific)
+        query_lower = query.lower()
+        is_howto_query = any(word in query_lower for word in [
+            'how to', 'how do i', 'start up', 'boot', 'recovery mode', 
+            'safe mode', 'reset', 'restore', 'install', 'setup'
+        ])
+        
+        # Use no filter for how-to queries, device filter for device queries
+        filter_param = "" if is_howto_query else "?filter=device"
+        url = f"{IFIXIT_BASE}/search/{query}{filter_param}"
         response = httpx.get(url, timeout=10.0)
         
         if response.status_code != 200:
             return f"Error: iFixit API returned status {response.status_code}"
         
         data = response.json()
-        return _cleanup_search_results(data)
+        return _cleanup_search_results(data, is_guide_search=is_howto_query)
     except Exception as e:
         return f"Error searching iFixit: {str(e)}"
 
@@ -68,23 +78,30 @@ def get_guide(guide_id: int) -> str:
         return f"Error fetching guide: {str(e)}"
 
 
-def _cleanup_search_results(raw: dict) -> str:
+def _cleanup_search_results(raw: dict, is_guide_search: bool = False) -> str:
     """
     CLEANUP FUNCTION: Strip metadata from search results.
-    Returns only device names and IDs to save tokens.
+    Returns device names or guide titles with URLs to save tokens.
     """
     if not raw.get("results"):
-        return "No devices found. Try a different search term."
+        return "No results found. Try a different search term."
     
     results = raw.get("results", [])[:5]  # Limit to top 5 results
     cleaned = []
     
     for item in results:
-        device_name = item.get("title", "Unknown")
-        device_url = item.get("url", "")
-        cleaned.append(f"- {device_name} (URL: {device_url})")
+        title = item.get("title", "Unknown")
+        url = item.get("url", "")
+        item_type = item.get("dataType", "")  # Can be "device", "guide", etc.
+        
+        # For guide searches, indicate if it's a guide
+        if is_guide_search and item_type == "guide":
+            cleaned.append(f"- [GUIDE] {title} (URL: {url})")
+        else:
+            cleaned.append(f"- {title} (URL: {url})")
     
-    return "Found devices:\n" + "\n".join(cleaned)
+    header = "Found guides:\n" if is_guide_search else "Found devices:\n"
+    return header + "\n".join(cleaned)
 
 
 def _cleanup_guides_list(raw: dict) -> str:
