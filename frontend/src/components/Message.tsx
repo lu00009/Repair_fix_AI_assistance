@@ -8,10 +8,33 @@ interface MessageProps {
   role: 'user' | 'assistant';
   content: string;
   isStreaming?: boolean;
+  stepImage?: string | null;
+  stepImages?: Array<{ step: number; url: string }>;
 }
 
-export const Message: React.FC<MessageProps> = ({ role, content, isStreaming }) => {
+export const Message: React.FC<MessageProps> = ({ role, content, isStreaming, stepImage, stepImages }) => {
   const isUser = role === 'user';
+
+  // If stepImages array is provided, use it for progressive rendering
+  // Otherwise fall back to extracting from content
+  let extractedStepImage: string | null = null;
+  if (stepImage) {
+    extractedStepImage = stepImage;
+  } else if (!stepImages && typeof content === 'string') {
+    try {
+      // Match images like ![Step 1 image](https://...)
+      const stepMatch = content.match(/!\[\s*Step\s*\d+[^\]]*\]\((https?:\/\/[^)]+)\)/i);
+      if (stepMatch && stepMatch[1]) {
+        extractedStepImage = stepMatch[1];
+      } else {
+        // Fallback: any markdown image
+        const anyMatch = content.match(/!\[[^\]]*\]\((https?:\/\/[^)]+)\)/i);
+        if (anyMatch && anyMatch[1]) extractedStepImage = anyMatch[1];
+      }
+    } catch (e) {
+      extractedStepImage = null;
+    }
+  }
 
   return (
     <div
@@ -55,18 +78,57 @@ export const Message: React.FC<MessageProps> = ({ role, content, isStreaming }) 
                       {children}
                     </h2>
                   ),
-                  h3: ({ children }) => (
-                    <h3 className="text-lg font-semibold text-chat-text mt-2 mb-1">
-                      {children}
-                    </h3>
-                  ),
-                  
+                  h3: ({ children }) => {
+                    // Check if this is a step heading to inject step image
+                    const childText = String(children);
+                    const stepMatch = childText.match(/Step\s+(\d+)/i);
+
+                    return (
+                      <>
+                        <h3 className="text-lg font-semibold text-chat-text mt-2 mb-1">
+                          {children}
+                        </h3>
+                        {/* Render step image right after step heading if available */}
+                        {stepMatch && stepImages && stepImages.length > 0 && (
+                          (() => {
+                            const stepNum = parseInt(stepMatch[1]);
+                            const stepImg = stepImages.find(img => img.step === stepNum);
+                            return stepImg ? (
+                              <img
+                                src={stepImg.url}
+                                alt={`Step ${stepNum} image`}
+                                className="max-w-full h-auto rounded-lg my-4"
+                              />
+                            ) : null;
+                          })()
+                        )}
+                      </>
+                    );
+                  },
+
                   // Paragraphs
-                  p: ({ children }) => (
-                    <p className="text-chat-text mb-4 leading-7">
-                      {children}
-                    </p>
-                  ),
+                  p: ({ children }) => {
+                    const text = String(children);
+                    const stepMatch = text.match(/\bStep\s*(\d+)\b[:]?/i);
+                    return (
+                      <>
+                        <p className="text-chat-text mb-4 leading-7">{children}</p>
+                        {stepMatch && stepImages && stepImages.length > 0 && (
+                          (() => {
+                            const stepNum = parseInt(stepMatch[1]);
+                            const imgs = stepImages.filter(img => img.step === stepNum);
+                            return imgs.length > 0 ? (
+                              <div>
+                                {imgs.map(img => (
+                                  <img key={img.url} src={img.url} alt={`Step ${stepNum} image`} className="max-w-full h-auto rounded-lg my-4" />
+                                ))}
+                              </div>
+                            ) : null;
+                          })()
+                        )}
+                      </>
+                    );
+                  },
 
                   // Lists
                   ul: ({ children }) => (
@@ -133,18 +195,31 @@ export const Message: React.FC<MessageProps> = ({ role, content, isStreaming }) 
                   // Horizontal Rule
                   hr: () => <hr className="border-chat-border my-4" />,
 
-                  // Images
-                  img: ({ src, alt }) => (
-                    <img
-                      src={src}
-                      alt={alt}
-                      className="max-w-full h-auto rounded-lg my-4"
-                    />
-                  ),
+                  // Images - hide if we're using stepImages (to avoid duplication)
+                  img: ({ src, alt }) => {
+                    // If stepImages is provided, hide step images from markdown (they're rendered via h3)
+                    if (stepImages && alt?.match(/Step\s+\d+/i)) {
+                      return null;
+                    }
+                    return (
+                      <img
+                        src={src}
+                        alt={alt}
+                        className="max-w-full h-auto rounded-lg my-4"
+                      />
+                    );
+                  },
                 }}
               >
                 {content}
               </ReactMarkdown>
+            )}
+
+            {/* Render first-step image (if provided and no stepImages array) - fallback for legacy messages */}
+            {!isUser && !stepImages && extractedStepImage && (
+              <div>
+                <img src={extractedStepImage} alt="step" className="max-w-full h-auto rounded-lg my-4" />
+              </div>
             )}
 
             {/* Streaming cursor */}

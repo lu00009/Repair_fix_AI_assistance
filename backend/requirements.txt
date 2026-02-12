@@ -1,10 +1,15 @@
 fastapi
 uvicorn
 python-dotenv
-supabase
+motor
+pymongo
+pyjwt
+bcrypt
+python-multipart
 langgraph
 langchain
 langchain-core
 langchain-google-genai
 pydantic
+email-validator>=2.0.0
 httpx

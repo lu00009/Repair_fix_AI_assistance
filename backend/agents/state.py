@@ -10,13 +10,26 @@ class AgentState(TypedDict):
     # Node 1: normalize_input
     user_query: Optional[str]
     normalized_query: Optional[str]
+    ifixit_device: Optional[str]
     
     # Node 2: ifixit_search
     ifixit_results: Optional[List[Dict[str, Any]]]
     device_title: Optional[str]
+    selected_device: Optional[Dict[str, Any]]
     
-    # Node 3: route_results
+    # Node 3: list_guides
+    available_guides: Optional[List[Dict[str, Any]]]
+    
+    # Node 4: select_guide
+    selected_guide: Optional[Dict[str, Any]]
+    
+    # Node 5: fetch_guide
+    repair_steps: Optional[Dict[str, Any]]
+    
+    # Status and Flow
+    tool_status: Optional[List[str]]
     ifixit_found: Optional[bool]
+    error: Optional[str]
     
     # Node 4: web_search_fallback
     web_results: Optional[List[Dict[str, Any]]]
@@ -24,6 +37,9 @@ class AgentState(TypedDict):
     # Node 5: manage_context
     combined_context: Optional[str]
     has_results: Optional[bool]
+    # Extracted first-step image URL (if any) from tool results
+    step_image: Optional[str]
+    step_images: Optional[List[str]]
     
     # Node 6: format_markdown
     format_prompt: Optional[str]

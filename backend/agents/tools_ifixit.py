@@ -1,180 +1,181 @@
-import httpx
 from langchain_core.tools import tool
-from typing import Union
+from typing import Any
+from . import ifixit_client
+from .ifixit_client import formatted_result_for_query
 
-IFIXIT_BASE = "https://www.ifixit.com/api/2.0"
+
+FALLBACK_MESSAGE = (
+    "It looks like iFixit doesn't have a dedicated step-by-step guide for the back "
+    "panel replacement on your specific IdeaPad 1 14IGL7 yet. I can still help — "
+    "I can provide a general roadmap and tips for replacing a laptop back panel, "
+    "or try to find community-made guides and videos online. Which would you prefer?"
+)
+
+
+@tool
+def ifixit_search(query: str) -> str:
+    """Tool wrapper that returns a plain-text summary using API+scrape.
+
+    If no device or guides are found, returns a friendly fallback message.
+    """
+    try:
+        device_res = ifixit_client.find_device(query)
+        if not device_res.get("found"):
+            return FALLBACK_MESSAGE
+
+        device_title = device_res.get("device_title")
+        guides_res = ifixit_client.list_guides(device_title)
+        if not guides_res.get("found") or not guides_res.get("guides"):
+            return FALLBACK_MESSAGE
+
+        guides = guides_res.get("guides", [])
+        q_low = query.lower()
+        preferred = None
+        for g in guides:
+            t = (g.get("title") or "").lower()
+            if "back" in q_low and "back" in t:
+                preferred = g
+                break
+            if "panel" in q_low and "panel" in t:
+                preferred = g
+                break
+        if not preferred and guides:
+            preferred = guides[0]
+
+        guide_detail = ifixit_client.get_guide(preferred.get("guideid"))
+
+        out_lines = []
+        out_lines.append(f"Device Found: {'Yes' if device_res.get('found') else 'No'}")
+        out_lines.append(f"iFixit Guide Available: {'Yes' if guides else 'No'}")
+        out_lines.append("")
+        out_lines.append("Guide Title(s):")
+        out_lines.append("")
+        out_lines.append(preferred.get("title") or "Unknown")
+        out_lines.append("")
+        out_lines.append("Steps Summary:")
+        out_lines.append("")
+
+        steps = guide_detail.get("steps", []) if guide_detail.get("found") else []
+        if not steps:
+            out_lines.append("Note: No step text available for this guide.")
+        else:
+            for idx, s in enumerate(steps, 1):
+                text = s.get("text", "").strip()
+                if text:
+                    out_lines.append(f"Step {idx}: {text}")
+                else:
+                    imgs = s.get("images", [])
+                    if imgs:
+                        out_lines.append(f"Step {idx}: (no textual instructions available; image provided)")
+                    else:
+                        out_lines.append(f"Step {idx}: (no textual instructions available)")
+
+        out_lines.append("")
+        out_lines.append("Images:")
+        images = []
+        for s in steps:
+            for im in s.get("images", []):
+                if im not in images:
+                    images.append(im)
+        if images:
+            for im in images:
+                out_lines.append(im)
+        else:
+            out_lines.append("No images available.")
+
+        out_lines.append("")
+        out_lines.append("Tools (from guide):")
+        tools = guide_detail.get("tools", [])
+        if tools:
+            for t in tools:
+                out_lines.append(t)
+        else:
+            out_lines.append("No tools listed.")
+
+        return "\n".join(out_lines)
+    except Exception as e:
+        return f"Error running iFixit search: {e}"
+
 
 @tool
 def find_device(query: str) -> str:
-    """
-    Find device name or guides from user text using iFixit API.
-    Searches without filter if query looks like a how-to question.
-    Endpoint: GET https://www.ifixit.com/api/2.0/search/{QUERY}
-    Converts user text like 'my ps5 broke' into database key or returns relevant guides.
-    """
+    """Compatibility wrapper: returns a readable device search result string."""
     try:
-        # Check if query is a how-to/guide question (not device-specific)
-        query_lower = query.lower()
-        is_howto_query = any(word in query_lower for word in [
-            'how to', 'how do i', 'start up', 'boot', 'recovery mode', 
-            'safe mode', 'reset', 'restore', 'install', 'setup'
-        ])
-        
-        # Use no filter for how-to queries, device filter for device queries
-        filter_param = "" if is_howto_query else "?filter=device"
-        url = f"{IFIXIT_BASE}/search/{query}{filter_param}"
-        response = httpx.get(url, timeout=10.0)
-        
-        if response.status_code != 200:
-            return f"Error: iFixit API returned status {response.status_code}"
-        
-        data = response.json()
-        return _cleanup_search_results(data, is_guide_search=is_howto_query)
+        res = ifixit_client.find_device(query)
+        # If not found, retry after stripping common repair keywords
+        if not res.get("found"):
+            import re
+            cleaned = re.sub(r"\b(back|panel|replacement|disassembly|battery|fan|replace|repair)\b", "", query, flags=re.I).strip()
+            if cleaned and cleaned.lower() != query.lower():
+                res = ifixit_client.find_device(cleaned)
+        if not res.get("found"):
+            return "No results found."
+        lines = ["Found devices:"]
+        dt = res.get("device_title")
+        if dt:
+            lines.append(f"- {dt}")
+        for m in res.get("matches", [])[:6]:
+            title = m.get("title")
+            url = m.get("url")
+            if title and url:
+                lines.append(f"- {title} (URL: {url})")
+            elif title:
+                lines.append(f"- {title}")
+        return "\n".join(lines)
     except Exception as e:
-        return f"Error searching iFixit: {str(e)}"
+        return f"Error in find_device: {e}"
+
 
 @tool
 def list_guides(device_title: str) -> str:
-    """
-    List available repair guides for a device.
-    Endpoint: GET https://www.ifixit.com/api/2.0/wikis/CATEGORY/{DEVICE_TITLE}
-    Returns all repair topics (Fan, Drive, Motherboard) for the device.
-    """
+    """Compatibility wrapper: returns a readable list of guides for a device."""
     try:
-        url = f"{IFIXIT_BASE}/wikis/CATEGORY/{device_title}"
-        response = httpx.get(url, timeout=10.0)
-        
-        if response.status_code == 404:
-            return "Status: Not Found - No guides available for this device"
-        
-        if response.status_code != 200:
-            return f"Error: iFixit API returned status {response.status_code}"
-        
-        data = response.json()
-        return _cleanup_guides_list(data)
+        res = ifixit_client.list_guides(device_title)
+        if not res.get("found"):
+            return "No repair guides found for this device."
+        guides = res.get("guides", [])
+        if not guides:
+            return "No repair guides found for this device."
+        lines = ["Available repair guides:"]
+        for g in guides[:10]:
+            title = g.get("title", "Unknown")
+            gid = g.get("guideid", "N/A")
+            diff = g.get("difficulty", "Unknown")
+            lines.append(f"- [{gid}] {title} (Difficulty: {diff})")
+        return "\n".join(lines)
     except Exception as e:
-        return f"Error fetching guides: {str(e)}"
+        return f"Error in list_guides: {e}"
+
 
 @tool
 def get_guide(guide_id: int) -> str:
-    """
-    Get detailed repair steps for a specific guide.
-    Endpoint: GET https://www.ifixit.com/api/2.0/guides/{GUIDE_ID}
-    Returns step-by-step instructions with text and image URLs.
-    """
+    """Compatibility wrapper: returns cleaned guide details (steps, images, tools)."""
     try:
-        url = f"{IFIXIT_BASE}/guides/{guide_id}"
-        response = httpx.get(url, timeout=10.0)
-        
-        if response.status_code == 404:
+        res = ifixit_client.get_guide(guide_id)
+        if not res.get("found"):
             return "Status: Not Found - Guide does not exist"
-        
-        if response.status_code != 200:
-            return f"Error: iFixit API returned status {response.status_code}"
-        
-        data = response.json()
-        return _cleanup_guide_details(data)
-    except Exception as e:
-        return f"Error fetching guide: {str(e)}"
-
-
-def _cleanup_search_results(raw: dict, is_guide_search: bool = False) -> str:
-    """
-    CLEANUP FUNCTION: Strip metadata from search results.
-    Returns device names or guide titles with URLs to save tokens.
-    """
-    if not raw.get("results"):
-        return "No results found. Try a different search term."
-    
-    results = raw.get("results", [])[:5]  # Limit to top 5 results
-    cleaned = []
-    
-    for item in results:
-        title = item.get("title", "Unknown")
-        url = item.get("url", "")
-        item_type = item.get("dataType", "")  # Can be "device", "guide", etc.
-        
-        # For guide searches, indicate if it's a guide
-        if is_guide_search and item_type == "guide":
-            cleaned.append(f"- [GUIDE] {title} (URL: {url})")
+        title = res.get("title", "Unknown Guide")
+        lines = [f"**{title}**"]
+        steps = res.get("steps", [])
+        if not steps:
+            lines.append("No steps available.")
         else:
-            cleaned.append(f"- {title} (URL: {url})")
-    
-    header = "Found guides:\n" if is_guide_search else "Found devices:\n"
-    return header + "\n".join(cleaned)
-
-
-def _cleanup_guides_list(raw: dict) -> str:
-    """
-    CLEANUP FUNCTION: Strip metadata from guides list.
-    Returns only guide titles and IDs to save tokens.
-    """
-    guides = raw.get("guides", [])
-    
-    if not guides:
-        return "No repair guides found for this device."
-    
-    cleaned = []
-    for guide in guides[:10]:  # Limit to 10 guides
-        title = guide.get("title", "Unknown")
-        guide_id = guide.get("guideid", "N/A")
-        difficulty = guide.get("difficulty", "Unknown")
-        cleaned.append(f"- [{guide_id}] {title} (Difficulty: {difficulty})")
-    
-    return "Available repair guides:\n" + "\n".join(cleaned)
-
-
-def _cleanup_guide_details(raw: dict) -> str:
-    """
-    CLEANUP FUNCTION: Strip metadata from guide details.
-    Returns only text instructions and image URLs to save tokens.
-    Removes: IDs, revisions, author info, metadata.
-    """
-    title = raw.get("title", "Unknown Guide")
-    introduction = raw.get("introduction", "")
-    difficulty = raw.get("difficulty", "Unknown")
-    time_required = raw.get("time_required", "Unknown")
-    
-    result = f"**{title}**\n"
-    result += f"Difficulty: {difficulty} | Time: {time_required}\n\n"
-    
-    if introduction:
-        result += f"Introduction: {introduction}\n\n"
-    
-    # Extract steps (text and images only)
-    steps = raw.get("steps", [])
-    if not steps:
-        return result + "No steps available."
-    
-    result += "**Repair Steps:**\n\n"
-    
-    for idx, step in enumerate(steps, 1):
-        step_title = step.get("title", f"Step {idx}")
-        result += f"**Step {idx}: {step_title}**\n"
-        
-        # Get step text lines
-        lines = step.get("lines", [])
-        for line in lines:
-            text = line.get("text", "")
-            if text:
-                result += f"- {text}\n"
-        
-        # Get step images (only URLs, no metadata)
-        media = step.get("media", {})
-        if media.get("type") == "image":
-            image_url = media.get("data", {}).get("standard", "")
-            if image_url:
-                # Render as Markdown image so the frontend displays it inline
-                result += f"  ![Step {idx} image]({image_url})\n"
-        
-        result += "\n"
-    
-    # Extract tools needed
-    tools = raw.get("tools", [])
-    if tools:
-        result += "**Tools Required:**\n"
-        for tool in tools:
-            tool_name = tool.get("text", "Unknown tool")
-            result += f"- {tool_name}\n"
-    
-    return result
+            for idx, s in enumerate(steps, 1):
+                txt = s.get("text", "").strip()
+                if txt:
+                    # shorten to first sentence for brevity
+                    first = txt.split('\n')[0]
+                    lines.append(f"Step {idx}: {first}")
+                else:
+                    lines.append(f"Step {idx}: (no textual instructions available)")
+                imgs = s.get("images", [])
+                for im in imgs[:2]:
+                    lines.append(im)
+        tools = res.get("tools", [])
+        if tools:
+            lines.append("\nTools Required:")
+            for t in tools:
+                lines.append(f"- {t}")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Error in get_guide: {e}"

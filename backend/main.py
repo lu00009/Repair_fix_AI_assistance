@@ -5,6 +5,7 @@ from backend.auth.routes import router
 from dotenv import load_dotenv
 import os
 from backend.chat.routes import router as chat_router
+from backend.mongo_client import init_db, close_db
 
 
 load_dotenv()
@@ -17,6 +18,21 @@ app = FastAPI(
     description="AI-powered repair assistant with iFixit integration. Use the 'Authorize' button to add your Bearer token.",
     version="1.0.0"
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize MongoDB connection and indexes on startup."""
+    await init_db()
+    print("✅ Application started successfully")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Close MongoDB connections on shutdown."""
+    await close_db()
+    print("👋 Application shutdown complete")
+
 
 # Health check endpoint (no auth required)
 @app.get("/")
@@ -35,10 +51,15 @@ def root():
 @app.get("/health")
 def health():
     bypass_auth = os.getenv("BYPASS_AUTH", "false").lower() == "true"
+    mongodb_url = os.getenv("MONGODB_URL", "not set")
+    # Hide credentials in health check
+    mongodb_status = "configured" if mongodb_url != "not set" else "not configured"
+    
     return {
         "status": "healthy",
         "auth_mode": "development (bypassed)" if bypass_auth else "production",
-        "supabase_url": os.getenv("SUPABASE_URL", "not set")
+        "database": "MongoDB Atlas",
+        "mongodb_status": mongodb_status
     }
 
 # Enable CORS (for frontend) - must be before routes

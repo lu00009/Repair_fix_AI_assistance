@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     thread_id TEXT NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
     content TEXT NOT NULL,
+    step_image TEXT,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
