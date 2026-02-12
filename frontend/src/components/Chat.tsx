@@ -196,11 +196,11 @@ export const Chat: React.FC<ChatProps> = ({ onLogout }) => {
       const history = await apiService.getChatHistory(sessionId);
       setMessages(history);
       // Set currentStepImage from the last assistant message that has a step_image
-      const lastAssistantWithStep = [...history].reverse().find((m: any) => m.role === 'assistant' && (m.step_image || m.stepImage));
+      const lastAssistantWithStep = [...history].reverse().find((m: MessageType) => m.role === 'assistant' && (m.step_image || m.step_images));
       if (lastAssistantWithStep) {
         setCurrentStepImage(lastAssistantWithStep.step_image || null);
         // Load any step_images array into streamingStepImages for rendering
-        const imgs = (lastAssistantWithStep.step_images || lastAssistantWithStep.stepImages) || [];
+        const imgs = lastAssistantWithStep.step_images || [];
         setStreamingStepImages(imgs as any);
       } else {
         setCurrentStepImage(null);
@@ -356,8 +356,8 @@ export const Chat: React.FC<ChatProps> = ({ onLogout }) => {
                 role={message.role}
                 content={message.content}
                 // Pass per-message step image (either from history or streaming final payload)
-                stepImage={(message as any).step_image || (message as any).stepImage || null}
-                stepImages={(message as any).step_images}
+                stepImage={message.step_image || null}
+                stepImages={message.step_images}
               />
             </div>
           ))}
@@ -367,7 +367,7 @@ export const Chat: React.FC<ChatProps> = ({ onLogout }) => {
               role="assistant"
               content={streamingMessage}
               isStreaming={true}
-                stepImages={streamingStepImages}
+              stepImages={streamingStepImages}
             />
           )}
 

@@ -208,7 +208,13 @@ export class ApiService {
     const res = await fetch(url.toString(), { headers: this.getAuthHeaders() });
     if (!res.ok) throw new Error(`Failed to load history: ${res.status}`);
     const data = await res.json();
-    return (data.messages || []).map((m: any) => ({ role: m.role, content: m.content, timestamp: m.timestamp, step_image: m.step_image }));
+    return (data.messages || []).map((m: any) => ({
+      role: m.role,
+      content: m.content,
+      timestamp: m.timestamp,
+      step_image: m.step_image,
+      step_images: m.step_images
+    }));
   }
 
   // Clear chat history (all or a specific thread)

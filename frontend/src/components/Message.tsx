@@ -9,7 +9,7 @@ interface MessageProps {
   content: string;
   isStreaming?: boolean;
   stepImage?: string | null;
-  stepImages?: Array<{ step: number; url: string }>;
+  stepImages?: Array<{ step: number; url: string }> | null;
 }
 
 export const Message: React.FC<MessageProps> = ({ role, content, isStreaming, stepImage, stepImages }) => {
