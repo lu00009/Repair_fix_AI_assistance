@@ -8,8 +8,7 @@ No LLM generation - uses simple keyword matching.
 from typing import TYPE_CHECKING
 import logging
 
-if TYPE_CHECKING:
-    from ..agent import AgentState
+from ..utils import debug_print
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,9 @@ async def select_guide_node(state: "AgentState") -> "AgentState":
     state["tool_status"].append("Selecting most relevant guide...")
     
     guides = state.get("available_guides") or []
-    canonical_query = (state.get("user_query") or state.get("normalized_query") or state.get("query") or "").lower()
+    # Prefer original query for keyword matching to catch symptoms like 'disc drive'
+    canonical_query = (state.get("query") or state.get("user_query") or state.get("normalized_query") or "").lower()
+    debug_print(f"DEBUG: select_guide_node with {len(guides)} guides. Query: {canonical_query}")
     
     # Simple relevance scoring
     best_guide = None
@@ -44,6 +45,18 @@ async def select_guide_node(state: "AgentState") -> "AgentState":
         state["ifixit_found"] = False
         return state
     
+    # Synonym mapping for common parts
+    synonyms = {
+        "disc": ["optical", "drive", "disk", "dvd", "cd", "disk"],
+        "drive": ["optical", "disc", "disk", "dvd", "cd"],
+        "screen": ["display", "lcd", "glass", "digitizer", "panel"],
+        "display": ["screen", "lcd", "glass", "digitizer", "panel"],
+        "battery": ["power", "cell"],
+        "power": ["battery", "supply", "psu", "adapter"],
+        "fan": ["cooler", "cooling", "thermal", "overheating"],
+        "overheat": ["fan", "cooler", "thermal", "paste"],
+    }
+
     for guide in guides:
         score = 0
         title_lower = guide["title"].lower()
@@ -52,15 +65,26 @@ async def select_guide_node(state: "AgentState") -> "AgentState":
         # Check for keyword matches
         query_words = canonical_query.split()
         for word in query_words:
-            if len(word) > 3:  # Ignore short words
-                if word in title_lower:
-                    score += 2
-                if word in subject_lower:
-                    score += 1
+            if len(word) < 3: continue
+            
+            # Direct match
+            if word in title_lower:
+                score += 3
+            if word in subject_lower:
+                score += 1
+
+            # Synonym match
+            if word in synonyms:
+                for syn in synonyms[word]:
+                    if syn in title_lower:
+                        score += 2
+                    if syn in subject_lower:
+                        score += 1
         
         if score > best_score:
             best_score = score
             best_guide = guide
+            debug_print(f"DEBUG: New best guide: {guide['title']} with score {score}")
     
     # If no good match, select first repair guide
     if best_guide is None and guides:

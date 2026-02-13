@@ -5,6 +5,7 @@ from backend.auth.routes import router
 from dotenv import load_dotenv
 import os
 from backend.chat.routes import router as chat_router
+from backend.agents.utils import debug_print
 from backend.mongo_client import init_db, close_db
 
 
@@ -37,6 +38,7 @@ async def shutdown_event():
 # Health check endpoint (no auth required)
 @app.get("/")
 def root():
+    debug_print("DEBUG: Root endpoint called")
     return {
         "status": "online",
         "message": "Repair Assistant API",

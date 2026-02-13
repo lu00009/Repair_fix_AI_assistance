@@ -27,6 +27,10 @@ model = ChatGoogleGenerativeAI(
     google_api_key=GEMINI_API_KEY,
     streaming=True
 )
+import logging
+import os
+
+from .utils import debug_print
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +47,7 @@ logger = logging.getLogger(__name__)
 # ==================== NODE 3: ROUTE RESULTS ====================
 async def route_results(state: AgentState) -> AgentState:
     """Determine if iFixit found useful results by checking state keys."""
+    debug_print("DEBUG: Entering route_results")
     # If an earlier node already flagged iFixit as found, trust it.
     if state.get("ifixit_found"):
         return {"ifixit_found": True}
@@ -92,6 +97,7 @@ async def web_search_fallback(state: AgentState) -> AgentState:
 # ==================== NODE 5: MANAGE CONTEXT ====================
 async def manage_context(state: AgentState) -> AgentState:
     """Combine all results into structured context."""
+    debug_print("DEBUG: Entering manage_context")
     ifixit_results = state.get("ifixit_results", [])
     web_results = state.get("web_results", [])
     ifixit_found = state.get("ifixit_found", False)
@@ -134,6 +140,7 @@ async def manage_context(state: AgentState) -> AgentState:
     
     combined_context = "\n\n".join(context_parts)
     
+    debug_print(f"DEBUG: manage_context finished. context_parts: {len(context_parts)}, ifixit_found: {ifixit_found}, has_results: {len(context_parts) > 0 or ifixit_found}")
     return {
         "combined_context": combined_context,
         "has_results": len(context_parts) > 0 or ifixit_found,
@@ -148,6 +155,8 @@ async def format_markdown(state: AgentState) -> AgentState:
     user_query = state.get("user_query", "")
     combined_context = state.get("combined_context", "")
     has_results = state.get("has_results", False)
+    repair = state.get("repair_steps")
+    debug_print(f"DEBUG: Entering format_markdown. has_results: {has_results}, repair_steps present: {bool(repair and repair.get('steps'))}")
     
     if not has_results:
         return {
@@ -244,9 +253,10 @@ async def stream_response(state: AgentState) -> AgentState:
     """Stream the formatted response token-by-token."""
     formatted_response = state.get("formatted_response", "")
     format_prompt = state.get("format_prompt", "")
+    debug_print(f"DEBUG: Entering stream_response. formatted_response len: {len(formatted_response)}, format_prompt len: {len(format_prompt)}")
     
-    if formatted_response and not format_prompt:
-        # Already formatted (e.g. error message or structured result)
+    if formatted_response and (not format_prompt):
+        debug_print("DEBUG: Already formatted, returning result directly")
         return {"formatted_response": formatted_response, "completion_tokens": 0}
 
     if not format_prompt:

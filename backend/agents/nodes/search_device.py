@@ -7,8 +7,7 @@ Searches iFixit API for the device based on normalized query.
 from typing import TYPE_CHECKING
 import logging
 
-if TYPE_CHECKING:
-    from ..agent import AgentState
+from ..utils import debug_print
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +49,13 @@ async def search_device_node(state: "AgentState") -> "AgentState":
     cleaned_name = re.sub(r"\b(back|panel|replacement|disassembly|battery|fan|replace|repair|screen|display|lcd|glass)\b", "", device_name, flags=re.I).strip()
     if cleaned_name:
         device_name = cleaned_name
+        debug_print(f"DEBUG: Cleaned device name for search: {device_name}")
         logger.info(f"Cleaned device name for search: {device_name}")
     
+    debug_print(f"DEBUG: Starting search_device_node for {device_name}")
     ifixit = get_ifixit_tools()
     result = await ifixit.search_devices(device_name)
+    debug_print(f"DEBUG: search_devices result found: {bool(result and result.get('devices'))}")
     
     if result and result.get("devices"):
         # Select the first (most relevant) device

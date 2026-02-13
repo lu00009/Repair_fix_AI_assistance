@@ -55,25 +55,32 @@ class _GeminiLLM:
 
         # Heuristic: attempt to capture brand+model phrases
         brands = [
-            'lenovo', 'dell', 'hp', 'acer', 'asus', 'apple', 'macbook', 'iphone', 'samsung',
-            'google', 'xiaomi', 'sony', 'microsoft', 'toshiba', 'lg', 'realme'
+            'lenovo', 'dell', 'hp', 'acer', 'asus', 'apple', 'macbook', 'iphone', 'ipad', 'samsung',
+            'google', 'xiaomi', 'sony', 'microsoft', 'toshiba', 'lg', 'realme', 'playstation', 'ps[45]', 'xbox', 'nintendo'
         ]
         brand_pattern = r"(" + r"|".join(brands) + r")[\w\s\-0-9]{0,60}"
         bm = re.search(brand_pattern, q, flags=re.I)
         if bm:
             device_candidate = bm.group(0).strip()
             # cleanup trailing words like 'repair', 'replacement', etc.
-            device_candidate = re.sub(r"\b(repair|replacement|disassembly|fix|troubleshooting|screen|battery|fan|display|lcd|glass)\b.*$", "", device_candidate, flags=re.I).strip()
+            # remove common repair/part keywords and trailing filler
+            device_candidate = re.sub(r"\b(repair|replacement|disassembly|fix|troubleshooting|screen|battery|fan|display|lcd|glass|disc drive|disk drive|joy-con|controller)\b.*$", "", device_candidate, flags=re.I).strip()
             if device_candidate:
                 q = device_candidate
 
-        # Heuristic cleanup: remove common repair/issue words
-        q_clean = re.sub(r"\b(back|panel|replacement|disassembly|battery|fan|replace|repair|troubleshoot|troubleshooting|won't work|won't|not working|fix|screen|display|lcd|glass)\b", "", q, flags=re.I)
+        # Heuristic cleanup: remove common repair/issue words and conversational filler
+        q_clean = re.sub(r"\b(my|the|is|are|a|an|back|panel|replacement|disassembly|battery|fan|replace|repair|troubleshoot|troubleshooting|won't work|won't|not working|working|faulty|broken|fix|screen|display|lcd|glass|disc drive|disk drive|joy-con|controller)\b", "", q, flags=re.I)
         q_clean = re.sub(r"\s+"," ", q_clean).strip()
 
-        # Prefer a short device name: take up to first 5 words
+        # Prefer a short device name: take up to first 4 words
         parts = q_clean.split()
-        device = " ".join(parts[:5]) if parts else q
+        device = " ".join(parts[:4]) if parts else q
+
+        # Special case: normalize PS5 to PlayStation 5 for better iFixit matching
+        if re.search(r"\bps5\b", device, flags=re.I):
+            device = "PlayStation 5"
+        elif re.search(r"\bps4\b", device, flags=re.I):
+            device = "PlayStation 4"
 
         # Capitalize words in a reasonable way
         return device.title()

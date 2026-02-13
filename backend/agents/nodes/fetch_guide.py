@@ -6,6 +6,7 @@ Fetches detailed repair guide with step-by-step instructions and images.
 
 from typing import TYPE_CHECKING
 import logging
+from ..utils import debug_print
 
 if TYPE_CHECKING:
     from ..agent import AgentState
@@ -39,7 +40,9 @@ async def fetch_guide_node(state: "AgentState") -> "AgentState":
     
     ifixit = get_ifixit_tools()
     guide_id = selected_guide["guideid"]
+    debug_print(f"DEBUG: fetch_guide_node for ID {guide_id}")
     result = await ifixit.fetch_repair_guide(guide_id)
+    debug_print(f"DEBUG: fetch_repair_guide result found: {bool(result and result.get('found'))}")
     
     # Validate and CLEANUP result according to CLEANUP FUNCTION rules
     if result and result.get("found"):

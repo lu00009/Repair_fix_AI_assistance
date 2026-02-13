@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 from langchain_core.messages import HumanMessage
 import logging
 
+from ..utils import debug_print
+
 if TYPE_CHECKING:
     from ..agent import AgentState
 
@@ -30,9 +32,9 @@ async def normalize_query_node(state: "AgentState") -> "AgentState":
     """
     from ..agent import get_llm
 
-    # Ensure tool_status list exists to avoid KeyError when running in server
     state.setdefault("tool_status", [])
     state["tool_status"].append("Normalizing query...")
+    debug_print(f"DEBUG: Entering normalize_query_node. state keys: {list(state.keys())}")
 
     llm = get_llm()
 

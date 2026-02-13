@@ -6,6 +6,7 @@ Retrieves all available repair guides for the selected device.
 
 from typing import TYPE_CHECKING
 import logging
+from ..utils import debug_print
 
 if TYPE_CHECKING:
     from ..agent import AgentState
@@ -61,7 +62,10 @@ async def list_guides_node(state: "AgentState") -> "AgentState":
             cleaned_title = cleaned_title.replace(invalid_suffix, "")
             logger.info(f"Cleaned device title: '{device_title}' -> '{cleaned_title}'")
     
-    result = await ifixit.list_guides(cleaned_title)
+    debug_print(f"DEBUG: list_guides_node for {device_title}")
+    ifixit = get_ifixit_tools()
+    result = await ifixit.list_guides(cleaned_title) # Keep original logic of using cleaned_title
+    debug_print(f"DEBUG: list_guides found {len(result.get('guides', []))} guides")
     
     if result and result.get("guides"):
         state["available_guides"] = result["guides"]
