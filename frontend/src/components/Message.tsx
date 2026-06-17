@@ -2,7 +2,7 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { User, Bot } from 'lucide-react';
-import { cn } from '../lib/utils.ts';
+import { cn } from '../lib/utils';
 
 interface MessageProps {
   role: 'user' | 'assistant';
