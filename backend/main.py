@@ -67,7 +67,12 @@ def health():
 # Enable CORS (for frontend) - must be before routes
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # or your frontend URL
+    allow_origins=[
+        "https://repair-fix-ai-assistance-ixmt.vercel.app",
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True,
