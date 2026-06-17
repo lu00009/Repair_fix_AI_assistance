@@ -8,11 +8,12 @@ interface MessageProps {
   role: 'user' | 'assistant';
   content: string;
   isStreaming?: boolean;
+  isStatus?: boolean;
   stepImage?: string | null;
   stepImages?: Array<{ step: number; url: string }> | null;
 }
 
-export const Message: React.FC<MessageProps> = ({ role, content, isStreaming, stepImage, stepImages }) => {
+export const Message: React.FC<MessageProps> = ({ role, content, isStreaming, isStatus, stepImage, stepImages }) => {
   const isUser = role === 'user';
 
   // If stepImages array is provided, use it for progressive rendering
@@ -63,6 +64,10 @@ export const Message: React.FC<MessageProps> = ({ role, content, isStreaming, st
           <div className="prose prose-invert max-w-none">
             {isUser ? (
               <p className="text-chat-text whitespace-pre-wrap">{content}</p>
+            ) : isStatus ? (
+              <p className="text-chat-text-secondary italic animate-pulse flex items-center gap-2">
+                <span>{content}</span>
+              </p>
             ) : (
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}

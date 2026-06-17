@@ -1,3 +1,4 @@
+import json
 from langchain_core.tools import tool
 from typing import Any
 from . import ifixit_client
@@ -52,10 +53,13 @@ def ifixit_search(query: str) -> str:
         out_lines.append("")
         out_lines.append(preferred.get("title") or "Unknown")
         out_lines.append("")
+        out_lines.append("")
         out_lines.append("Steps Summary:")
         out_lines.append("")
 
         steps = guide_detail.get("steps", []) if guide_detail.get("found") else []
+        step_images_metadata = []
+
         if not steps:
             out_lines.append("Note: No step text available for this guide.")
         else:
@@ -64,31 +68,25 @@ def ifixit_search(query: str) -> str:
                 if text:
                     out_lines.append(f"Step {idx}: {text}")
                 else:
-                    imgs = s.get("images", [])
-                    if imgs:
-                        out_lines.append(f"Step {idx}: (no textual instructions available; image provided)")
-                    else:
-                        out_lines.append(f"Step {idx}: (no textual instructions available)")
+                    out_lines.append(f"Step {idx}: (no textual instructions available)")
+                
+                # Capture images for this step
+                imgs = s.get("images", [])
+                for img_url in imgs:
+                    # Append as markdown with Step X in alt text for regex extraction
+                    out_lines.append(f"![Step {idx} image]({img_url})")
+                    step_images_metadata.append({"step": idx, "url": img_url})
 
-        out_lines.append("")
-        out_lines.append("Images:")
-        images = []
-        for s in steps:
-            for im in s.get("images", []):
-                if im not in images:
-                    images.append(im)
-        if images:
-            for im in images:
-                out_lines.append(im)
-        else:
-            out_lines.append("No images available.")
+        # Add structured metadata comment for the stream handler
+        if step_images_metadata:
+            out_lines.append(f"\n<!-- STEP_IMAGES: {json.dumps(step_images_metadata)} -->")
 
         out_lines.append("")
         out_lines.append("Tools (from guide):")
         tools = guide_detail.get("tools", [])
         if tools:
             for t in tools:
-                out_lines.append(t)
+                out_lines.append(f"- {t}")
         else:
             out_lines.append("No tools listed.")
 

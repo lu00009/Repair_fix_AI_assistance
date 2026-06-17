@@ -39,23 +39,26 @@ async def normalize_query_node(state: "AgentState") -> "AgentState":
     llm = get_llm()
 
     # Determine the user query robustly from possible state fields
-    query_val = state.get("query") or state.get("user_query")
+    # If 'query' is already present and not already normalized, keep it.
+    query_val = state.get("query")
     if not query_val:
         # Try to extract the last human message from `messages`
         msgs = state.get("messages") or []
         for m in reversed(msgs):
-            # prefer objects with .content
-            if hasattr(m, "content") and getattr(m, "content"):
-                query_val = getattr(m, "content")
+            if hasattr(m, "content") and m.content:
+                query_val = m.content
                 break
-            # fallback to string representation
             if isinstance(m, str) and m.strip():
                 query_val = m
                 break
+    
     if not query_val:
         query_val = ""
-    # Ensure canonical state key exists for downstream nodes
-    state.setdefault("query", query_val)
+    
+    # CRITICAL: Store the ORIGINAL user query in 'query' for downstream keyword matching.
+    # Do NOT overwrite it with a normalized version if it contains useful symptoms.
+    state["query"] = query_val
+    debug_print(f"DEBUG: normalize_query_node PRESERVED original query: '{query_val}'")
 
     prompt = f"""Extract ONLY the device model/name from this repair query.
 
@@ -78,6 +81,7 @@ Output ONLY the device name (nothing else):"""
     
     response = await llm.ainvoke([HumanMessage(content=prompt)])
     device_name = response.content.strip()
+    debug_print(f"DEBUG: normalize_query_node EXTRACTED device_name: '{device_name}'")
     
     # Store canonical query for downstream nodes per STATE HANDLING RULES
     # The canonical field is `user_query` and must contain the normalized device name

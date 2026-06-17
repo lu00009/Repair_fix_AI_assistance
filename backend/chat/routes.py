@@ -53,11 +53,14 @@ async def chat_stream(request: ChatRequest, user=Depends(get_current_user)):
         pass
     
     # Save user message to conversation history
-    asyncio.create_task(save_message_to_history(user_id, thread_id, "user", request.message))
+    await save_message_to_history(user_id, thread_id, "user", request.message)
     
     async def generate() -> AsyncGenerator[str, None]:
         assistant_response = ""
         pending_done_payload = None
+        
+        # Emit thread_id immediately so frontend can associate the session
+        yield f"data: {json.dumps({'type': 'thread_id', 'thread_id': thread_id})}\n\n"
         # For progressive step image emission
         emitted_step_images = set()
         collected_step_images = []  # list of dicts {step:int, url:str}
@@ -270,7 +273,7 @@ async def chat_stream(request: ChatRequest, user=Depends(get_current_user)):
                                     step_images_metadata = []
 
                                 # Save assistant response to conversation history (persist step image if available)
-                                asyncio.create_task(save_message_to_history(user_id, thread_id, "assistant", assistant_response, step_image))
+                                await save_message_to_history(user_id, thread_id, "assistant", assistant_response, step_image)
                                 # Prepare done payload but delay sending until graph finishes so we include the final step_image
                                 # Include a structured JSON payload so the frontend can render text and image separately
                                 structured = {
@@ -338,9 +341,9 @@ async def chat_stream(request: ChatRequest, user=Depends(get_current_user)):
 def _get_tool_status_message(tool_name: str) -> str:
     """Get friendly status message for tool execution."""
     status_messages = {
-        "find_device": "🔍 Searching iFixit...",
+        "search_devices": "🔍 Searching iFixit...",
         "list_guides": "📋 Loading guides...",
-        "get_guide": "📖 Getting repair steps...",
+        "fetch_repair_guide": "📖 Getting repair steps...",
         "web_search": "🌐 Searching online..."
     }
     return status_messages.get(tool_name, f"Working on it...")

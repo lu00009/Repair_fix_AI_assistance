@@ -12,7 +12,7 @@ security = HTTPBearer(auto_error=False)
 class MockUser:
     """Mock user for development/testing without authentication."""
     def __init__(self):
-        self.id = "dev-user-123"
+        self.id = "00000000-0000-0000-0000-000000000000"
         self.email = "dev@example.com"
 
 

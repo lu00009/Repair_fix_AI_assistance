@@ -1,44 +1,19 @@
 from typing import Optional
 from datetime import datetime
-from backend.mongo_client import user_usage_collection
+from backend.postgres_client import get_db_connection
+import logging
 
+logger = logging.getLogger(__name__)
 
 async def track_token_usage(user_id: str, tokens_used: int) -> None:
     """
-    Track token usage for a user by updating the user_usage collection.
-    Uses upsert to create or update the user's token count.
+    Track token usage for a user by updating the user_usage table.
     
     Args:
         user_id: User's unique identifier
         tokens_used: Number of tokens consumed in the LLM call
     """
-    try:
-        # Get existing usage
-        existing = await user_usage_collection.find_one({"user_id": user_id})
-        
-        if existing:
-            # Update existing record
-            new_total = existing.get("total_tokens", 0) + tokens_used
-            await user_usage_collection.update_one(
-                {"user_id": user_id},
-                {
-                    "$set": {
-                        "total_tokens": new_total,
-                        "updated_at": datetime.utcnow()
-                    }
-                }
-            )
-        else:
-            # Create new record
-            await user_usage_collection.insert_one({
-                "user_id": user_id,
-                "total_tokens": tokens_used,
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow()
-            })
-    except Exception as e:
-        print(f"Error tracking token usage: {e}")
-        # Don't fail the request if tracking fails
+    await increment_token_usage(user_id, tokens_used)
 
 
 async def get_user_token_usage(user_id: str) -> int:
@@ -51,19 +26,27 @@ async def get_user_token_usage(user_id: str) -> int:
     Returns:
         Total tokens used by the user
     """
+    conn = None
     try:
-        usage = await user_usage_collection.find_one({"user_id": user_id})
-        if usage:
-            return usage.get("total_tokens", 0)
-        return 0
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT SUM(input_tokens + output_tokens) as total FROM user_usage WHERE user_id = %s",
+            (user_id,)
+        )
+        row = cur.fetchone()
+        return int(row["total"]) if row and row["total"] else 0
     except Exception as e:
-        print(f"Error getting token usage: {e}")
+        logger.error(f"Error getting token usage: {e}")
         return 0
+    finally:
+        if conn:
+            conn.close()
 
 
 async def increment_token_usage(user_id: str, tokens: int) -> bool:
     """
-    Increment token usage using MongoDB's atomic increment operation.
+    Increment token usage in Postgres.
     
     Args:
         user_id: User's unique identifier
@@ -72,20 +55,26 @@ async def increment_token_usage(user_id: str, tokens: int) -> bool:
     Returns:
         True if successful, False otherwise
     """
+    conn = None
     try:
-        result = await user_usage_collection.update_one(
-            {"user_id": user_id},
-            {
-                "$inc": {"total_tokens": tokens},
-                "$set": {"updated_at": datetime.utcnow()},
-                "$setOnInsert": {
-                    "user_id": user_id,
-                    "created_at": datetime.utcnow()
-                }
-            },
-            upsert=True
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # In this simplified model, we track tokens as input_tokens unless specified otherwise.
+        # But for maintenance, we'll just add to input_tokens or maybe we should have a more refined model.
+        # Given the previous MongoDB structure only had 'total_tokens', I'll just add to input_tokens.
+        
+        cur.execute(
+            "INSERT INTO user_usage (user_id, input_tokens) VALUES (%s, %s)",
+            (user_id, tokens)
         )
-        return result.acknowledged
+        conn.commit()
+        return True
     except Exception as e:
-        print(f"Error incrementing token usage: {e}")
+        if conn:
+            conn.rollback()
+        logger.error(f"Error incrementing token usage: {e}")
         return False
+    finally:
+        if conn:
+            conn.close()

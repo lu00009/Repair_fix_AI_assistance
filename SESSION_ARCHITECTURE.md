@@ -12,26 +12,28 @@ This application implements a production-ready, scalable ChatGPT-like chatbot wi
 - Sessions are isolated and don't interfere with each other
 
 ### ✅ Persistent Storage
-- All messages stored in Supabase `conversations` table
+- All messages stored in Neon PostgreSQL `conversations` table
 - Survives page refresh, tab close, and logout
-- Messages include: `user_id`, `thread_id`, `role`, `content`, `created_at`
+- Messages include: `user_id`, `thread_id`, `role`, `content`, `step_image`, `created_at`
 
 ### ✅ Session Management
 - **New Chat**: Creates new session with unique thread_id
 - **Session List**: Sidebar shows all user sessions, sorted by most recent
 - **Session Switching**: Click any session to load its complete message history
 - **Session Preview**: Shows title (first user message) and last message preview
+- **Thumbnails**: Sidebar shows repair step thumbnails where available
 
 ### ✅ Real-time Streaming
 - Server-Sent Events (SSE) for token-by-token streaming
-- Tool execution status updates
-- Thread ID returned in completion event
+- **Thinking Indicator**: Immediate visual feedback for tool execution
+- **Integrated Photos**: Progressive photo streaming alongside repair steps
+- Thread ID returned immediately in the stream for session association
 
 ### ✅ Production-Ready
-- User authentication with JWT tokens
+- User authentication with JWT tokens powered by Neon
 - Thread ownership verification (users can only access their own threads)
-- Optimistic UI updates for instant feedback
-- Clean architecture with separation of concerns
+- Atomic message persistence using blocking `await` calls
+- Clean architecture with separation of concerns between agents, nodes, and tools
 
 ## Architecture
 
@@ -59,31 +61,12 @@ thread_id = request.thread_id  # e.g., "thread-abc123"
 
 **SSE Response:**
 ```
-data: {"type": "status", "content": "Searching iFixit..."}
-data: {"type": "token", "content": "To"}
-data: {"type": "token", "content": " fix"}
+data: {"type": "thread_id", "thread_id": "thread-abc123"}
+data: {"type": "status", "content": "🔍 Searching iFixit..."}
+data: {"type": "word", "content": "To"}
+data: {"type": "word", "content": " fix"}
+data: {"type": "step_image", "step": 1, "url": "https://..."}
 data: {"type": "done", "thread_id": "thread-abc123"}
-```
-
-##### `GET /chat/history?thread_id=<id>`
-**Load specific session messages**
-```json
-{
-  "thread_id": "thread-abc123",
-  "message_count": 10,
-  "messages": [
-    {
-      "role": "user",
-      "content": "How do I fix my iPhone?",
-      "timestamp": "2025-12-16T10:30:00Z"
-    },
-    {
-      "role": "assistant", 
-      "content": "I'll help you with that...",
-      "timestamp": "2025-12-16T10:30:15Z"
-    }
-  ]
-}
 ```
 
 ##### `GET /chat/sessions`
@@ -95,33 +78,29 @@ data: {"type": "done", "thread_id": "thread-abc123"}
       "id": "thread-abc123",
       "title": "How do I fix my iPhone?",
       "preview": "I'll help you with that. First, identify...",
-      "timestamp": "2025-12-16T10:30:15Z",
-      "message_count": 10
+      "timestamp": "2026-06-17T10:30:15Z",
+      "message_count": 10,
+      "thumbnail": "https://..."
     }
   ]
 }
 ```
 
-##### `DELETE /chat/history?thread_id=<id>`
-**Clear specific session or all sessions**
-- With `thread_id`: Deletes specific conversation
-- Without `thread_id`: Deletes ALL user conversations
-
-#### Data Model
+#### Data Model (Neon PostgreSQL)
 
 **`conversations` table:**
 ```sql
 CREATE TABLE conversations (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL,
+    id SERIAL PRIMARY KEY,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     thread_id TEXT NOT NULL,
     role TEXT NOT NULL,  -- 'user' or 'assistant'
     content TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW()
+    step_image TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_conversations_user_thread 
-ON conversations(user_id, thread_id, created_at);
+CREATE INDEX idx_conversations_thread_id ON conversations(thread_id);
 ```
 
 ### Frontend (`/frontend`)

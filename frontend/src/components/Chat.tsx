@@ -23,6 +23,7 @@ export const Chat: React.FC<ChatProps> = ({ onLogout }) => {
   const [streamingMessage, setStreamingMessage] = useState('');
   const [currentStepImage, setCurrentStepImage] = useState<string | null>(null);
   const [streamingStepImages, setStreamingStepImages] = useState<Array<{ step: number; url: string }>>([]);
+  const [currentStatus, setCurrentStatus] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
@@ -58,6 +59,7 @@ export const Chat: React.FC<ChatProps> = ({ onLogout }) => {
     };
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
+    setCurrentStatus('Thinking...');
     setStreamingMessage('');
     setStreamingStepImages([]);
 
@@ -94,9 +96,14 @@ export const Chat: React.FC<ChatProps> = ({ onLogout }) => {
         }
 
         if (chunk.content) {
+          setCurrentStatus(null);
           fullResponse += chunk.content;
           // Cumulative streaming: show previous_state + current_state
           setStreamingMessage(fullResponse);
+        }
+
+        if (chunk.status) {
+          setCurrentStatus(chunk.status);
         }
       }
 
@@ -368,6 +375,15 @@ export const Chat: React.FC<ChatProps> = ({ onLogout }) => {
               content={streamingMessage}
               isStreaming={true}
               stepImages={streamingStepImages}
+            />
+          )}
+
+          {!streamingMessage && currentStatus && (
+            <Message
+              role="assistant"
+              content={currentStatus}
+              isStreaming={true}
+              isStatus={true}
             />
           )}
 

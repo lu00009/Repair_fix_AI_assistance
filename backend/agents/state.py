@@ -6,8 +6,7 @@ class AgentState(TypedDict):
     # Core conversation
     messages: Annotated[Sequence[BaseMessage], add_messages]
     user_id: Optional[str]
-    
-    # Node 1: normalize_input
+    query: Optional[str]
     user_query: Optional[str]
     normalized_query: Optional[str]
     ifixit_device: Optional[str]

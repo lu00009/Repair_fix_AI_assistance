@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 import os
 from backend.chat.routes import router as chat_router
 from backend.agents.utils import debug_print
-from backend.mongo_client import init_db, close_db
+from backend.postgres_client import init_postgres
 
 
 load_dotenv()
@@ -23,15 +23,14 @@ app = FastAPI(
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize MongoDB connection and indexes on startup."""
-    await init_db()
+    """Initialize database connections and indexes on startup."""
+    init_postgres()
     print("✅ Application started successfully")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Close MongoDB connections on shutdown."""
-    await close_db()
+    """Clean up on shutdown."""
     print("👋 Application shutdown complete")
 
 
@@ -53,15 +52,16 @@ def root():
 @app.get("/health")
 def health():
     bypass_auth = os.getenv("BYPASS_AUTH", "false").lower() == "true"
-    mongodb_url = os.getenv("MONGODB_URL", "not set")
+    neon_url = os.getenv("NEON_URL", "not set")
     # Hide credentials in health check
-    mongodb_status = "configured" if mongodb_url != "not set" else "not configured"
+    neon_status = "configured" if neon_url != "not set" else "not configured"
     
     return {
         "status": "healthy",
         "auth_mode": "development (bypassed)" if bypass_auth else "production",
-        "database": "MongoDB Atlas",
-        "mongodb_status": mongodb_status
+        "databases": {
+            "Neon Postgres": neon_status
+        }
     }
 
 # Enable CORS (for frontend) - must be before routes

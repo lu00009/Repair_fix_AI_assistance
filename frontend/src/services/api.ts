@@ -12,6 +12,7 @@ export interface Message {
 export interface StreamChunk {
   content?: string; // token or text chunk
   threadId?: string;
+  status?: string; // tool execution status or general "thinking"
   stepImage?: string; // a URL for a step image (may be on done or progressive)
   stepNumber?: number; // when progressive image is emitted
   stepImages?: Array<{ step: number; url: string }>;
@@ -141,8 +142,8 @@ export class ApiService {
           const c = parsed.content;
           if (c) yield { content: String(c) };
         } else if (parsed.type === 'status') {
-          // status messages can be treated as content
-          yield { content: parsed.content };
+          // status messages (e.g. tool execution status)
+          yield { status: parsed.content };
         } else if (parsed.type === 'line') {
           // line-by-line streaming
           const c = parsed.content;

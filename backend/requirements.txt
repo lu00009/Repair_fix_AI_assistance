@@ -13,3 +13,6 @@ langchain-google-genai
 pydantic
 email-validator>=2.0.0
 httpx
+gunicorn
+psycopg2-binary
+passlib[bcrypt]
