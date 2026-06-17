@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
-from backend.auth.dependencies import get_current_user
-from backend.postgres_client import get_db_connection
+from auth.dependencies import get_current_user
+from postgres_client import get_db_connection
 import logging
 
 logger = logging.getLogger(__name__)

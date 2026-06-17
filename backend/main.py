@@ -1,12 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
-from backend.auth.routes import router
+from auth.routes import router
 from dotenv import load_dotenv
 import os
-from backend.chat.routes import router as chat_router
-from backend.agents.utils import debug_print
-from backend.postgres_client import init_postgres
+from chat.routes import router as chat_router
+from agents.utils import debug_print
+from postgres_client import init_postgres
 
 
 load_dotenv()

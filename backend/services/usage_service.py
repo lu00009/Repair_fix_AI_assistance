@@ -1,6 +1,6 @@
 from typing import Optional
 from datetime import datetime
-from backend.postgres_client import get_db_connection
+from postgres_client import get_db_connection
 import logging
 
 logger = logging.getLogger(__name__)

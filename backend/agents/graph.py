@@ -7,18 +7,18 @@ import time
 import json
 import re
 
-from backend.agents.state import AgentState
-from backend.agents.tools_ifixit import find_device, list_guides, get_guide
-from backend.agents.tools_search import web_search
-from backend.core.config import GEMINI_API_KEY
-from backend.models.usage import track_token_usage
+from agents.state import AgentState
+from agents.tools_ifixit import find_device, list_guides, get_guide
+from agents.tools_search import web_search
+from core.config import GEMINI_API_KEY
+from models.usage import track_token_usage
 import logging
-from backend.agents.nodes.normalize_query import normalize_query_node
-from backend.agents.nodes.search_device import search_device_node
-from backend.agents.nodes.list_guides import list_guides_node
-from backend.agents.nodes.select_guide import select_guide_node
-from backend.agents.nodes.fetch_guide import fetch_guide_node
-from backend.agents.nodes.fallback_search import fallback_search_node
+from agents.nodes.normalize_query import normalize_query_node
+from agents.nodes.search_device import search_device_node
+from agents.nodes.list_guides import list_guides_node
+from agents.nodes.select_guide import select_guide_node
+from agents.nodes.fetch_guide import fetch_guide_node
+from agents.nodes.fallback_search import fallback_search_node
 
 # Model configured for streaming
 model = ChatGoogleGenerativeAI(

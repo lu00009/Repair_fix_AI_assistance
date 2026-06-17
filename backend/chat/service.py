@@ -1,6 +1,6 @@
 from typing import List, Optional
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
-from backend.services.conversation_service import (
+from services.conversation_service import (
     get_conversation_history,
     save_message,
     get_conversation_count as get_count,

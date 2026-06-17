@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, Body
 import logging
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
-from backend.agents.graph import app_graph
-from backend.auth.dependencies import get_current_user
-from backend.chat.service import get_or_create_conversation_history
+from agents.graph import app_graph
+from auth.dependencies import get_current_user
+from chat.service import get_or_create_conversation_history
 from pydantic import BaseModel
 import json
 import uuid
@@ -41,7 +41,7 @@ async def chat_stream(request: ChatRequest, user=Depends(get_current_user)):
     
     Messages are persisted to conversations table for session continuity.
     """
-    from backend.chat.service import save_message_to_history
+    from chat.service import save_message_to_history
     import asyncio
     
     user_id = user.id
@@ -393,7 +393,7 @@ async def get_chat_history(
     Returns:
         List of messages with role, content, and timestamp
     """
-    from backend.services.conversation_service import get_conversation_history
+    from services.conversation_service import get_conversation_history
     
     user_id = user.id
     
@@ -441,7 +441,7 @@ async def clear_chat_history(
     Args:
         thread_id: Optional thread to clear. If None, clears ALL conversations.
     """
-    from backend.services.conversation_service import delete_conversation
+    from services.conversation_service import delete_conversation
     
     user_id = user.id
     
@@ -467,7 +467,7 @@ async def get_sessions_endpoint(user=Depends(get_current_user)):
     Get all chat sessions for the current user.
     Returns a list of sessions with title, preview, and metadata.
     """
-    from backend.chat.service import get_user_sessions_wrapper as get_sessions_service
+    from chat.service import get_user_sessions_wrapper as get_sessions_service
     
     user_id = user.id
     

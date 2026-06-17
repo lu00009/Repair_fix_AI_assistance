@@ -1,14 +1,14 @@
 from fastapi import APIRouter, HTTPException, Depends
-from backend.auth.models import UserSignUp, UserLogin, TokenResponse, RefreshTokenRequest
-from backend.auth.jwt_utils import (
+from auth.models import UserSignUp, UserLogin, TokenResponse, RefreshTokenRequest
+from auth.jwt_utils import (
     create_access_token,
     create_refresh_token,
     verify_password,
     decode_token
 )
-from backend.services.user_service import create_user, find_user_by_email, find_user_by_id
-from backend.postgres_client import get_db_connection
-from backend.auth.dependencies import get_current_user
+from services.user_service import create_user, find_user_by_email, find_user_by_id
+from postgres_client import get_db_connection
+from auth.dependencies import get_current_user
 from datetime import datetime, timedelta
 import logging
 

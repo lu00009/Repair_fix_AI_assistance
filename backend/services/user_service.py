@@ -1,7 +1,7 @@
 from typing import Optional
 from datetime import datetime
-from backend.postgres_client import get_db_connection
-from backend.auth.jwt_utils import hash_password
+from postgres_client import get_db_connection
+from auth.jwt_utils import hash_password
 import logging
 
 logger = logging.getLogger(__name__)

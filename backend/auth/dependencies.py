@@ -1,7 +1,7 @@
 from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from backend.auth.jwt_utils import decode_token
-from backend.services.user_service import find_user_by_id
+from auth.jwt_utils import decode_token
+from services.user_service import find_user_by_id
 import os
 from typing import Optional
 
